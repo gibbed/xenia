@@ -32,6 +32,12 @@
 #include "xenia/xbox.h"
 
 namespace xe {
+namespace avatars {
+class AssetPack;
+}  // namespace avatars
+}  // namespace xe
+
+namespace xe {
 class ByteStream;
 class Emulator;
 namespace cpu {
@@ -108,6 +114,14 @@ class KernelState {
     return content_manager_.get();
   }
   xam::UserProfile* user_profile() const { return user_profile_.get(); }
+
+  avatars::AssetPack* avatar_asset_pack() const {
+    return avatar_asset_pack_.get();
+  }
+
+  avatars::AssetPack* legacy_avatar_asset_pack() const {
+    return legacy_avatar_asset_pack_.get();
+  }
 
   // Access must be guarded by the global critical region.
   util::ObjectTable* object_table() { return &object_table_; }
@@ -210,6 +224,9 @@ class KernelState {
   std::unique_ptr<xam::AppManager> app_manager_;
   std::unique_ptr<xam::ContentManager> content_manager_;
   std::unique_ptr<xam::UserProfile> user_profile_;
+
+  std::unique_ptr<avatars::AssetPack> avatar_asset_pack_;
+  std::unique_ptr<avatars::AssetPack> legacy_avatar_asset_pack_;
 
   xe::global_critical_region global_critical_region_;
 

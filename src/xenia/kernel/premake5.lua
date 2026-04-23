@@ -10,6 +10,7 @@ project("xenia-kernel")
     "aes_128",
     "fmt",
     "xenia-apu",
+    "xenia-avatars",
     "xenia-base",
     "xenia-cpu",
     "xenia-hid",

@@ -12,6 +12,7 @@
 #include <string>
 
 #include "third_party/fmt/include/fmt/format.h"
+#include "xenia/avatars/asset_pack.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
@@ -56,6 +57,9 @@ KernelState::KernelState(Emulator* emulator)
     content_root = std::filesystem::absolute(content_root);
   }
   content_manager_ = std::make_unique<xam::ContentManager>(this, content_root);
+
+  avatar_asset_pack_ = std::make_unique<avatars::AssetPack>();
+  legacy_avatar_asset_pack_ = std::make_unique<avatars::AssetPack>();
 
   assert_null(shared_kernel_state_);
   shared_kernel_state_ = this;
