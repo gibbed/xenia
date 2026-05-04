@@ -77,19 +77,19 @@ struct X_AVATAR_COMPONENT_INFO {
 static_assert_size(X_AVATAR_COMPONENT_INFO, 32);
 
 struct X_AVATAR_METADATA {
-  be<uint32_t> version;                    // 000
-  be<float> weight_factor;                 // 004
-  be<float> height_factor;                 // 008
-  X_AVATAR_BLEND_SHAPE blend_shapes[3];    // 00C
-  X_AVATAR_METADATA_TEXTURE textures[6];   // 03C
-  be<uint32_t> colors[9];                  // 0FC
-  X_AVATAR_COMPONENT_INFO body_component;  // 120
-  X_AVATAR_COMPONENT_INFO head_component;  // 140
-  X_AVATAR_COMPONENT_INFO components[13];  // 160
-  X_AVATAR_COMPONENT_INFO fallback_components[4];
-  be<uint64_t> owner_xuid;
-  uint8_t source_console_id[5];
-  uint8_t maybe_padding[91];
+  be<uint32_t> version;                            // 000
+  be<float> weight_factor;                         // 004
+  be<float> height_factor;                         // 008
+  X_AVATAR_BLEND_SHAPE blend_shapes[3];            // 00C
+  X_AVATAR_METADATA_TEXTURE textures[6];           // 03C
+  be<uint32_t> colors[9];                          // 0FC
+  X_AVATAR_COMPONENT_INFO body_component;          // 120
+  X_AVATAR_COMPONENT_INFO head_component;          // 140
+  X_AVATAR_COMPONENT_INFO components[13];          // 160
+  X_AVATAR_COMPONENT_INFO fallback_components[4];  // 300
+  be<uint64_t> owner_xuid;                         // 380
+  uint8_t source_console_id[5];                    // 388
+  uint8_t maybe_padding[91];                       // 38D
 };
 static_assert_size(X_AVATAR_METADATA, 1000);
 

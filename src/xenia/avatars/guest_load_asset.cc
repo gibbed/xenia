@@ -76,7 +76,7 @@ static uint8_t skeleton_nxe[] = {
     0x26, 0x00, 0xC0, 0x23, 0xAF, 0x01, 0x95, 0x25, 0x0A, 0x0A,
 };
 
-uint8_t skeleton_kinect[] = {
+static uint8_t skeleton_kinect[] = {
     0x47, 0x00, 0x00, 0x00, 0x02, 0x44, 0xED, 0x36, 0x5E, 0x39, 0x2E, 0xBF,
     0x6B, 0xB0, 0x80, 0x3C, 0xF2, 0x7B, 0x88, 0xBD, 0x51, 0xE4, 0x08, 0x10,
     0xB5, 0xDB, 0x00, 0x00, 0x00, 0x93, 0x02, 0x00, 0xD0, 0x96, 0x02, 0x00,
@@ -124,8 +124,8 @@ uint8_t skeleton_kinect[] = {
     0x29, 0x00, 0xC0, 0x73, 0x6E, 0x61, 0xEE, 0xA8, 0x88, 0x08,
 };
 
-void SaveModel(const X_AVATAR_COMPONENT_INFO& component_info,
-               std::shared_ptr<Model> model, AssetPack* asset_pack) {
+static void SaveModel(const X_AVATAR_COMPONENT_INFO& component_info,
+                      std::shared_ptr<Model> model, AssetPack* asset_pack) {
   if (model == nullptr) {
     return;
   }
@@ -164,7 +164,8 @@ void SaveModel(const X_AVATAR_COMPONENT_INFO& component_info,
   }
 
   size_t texture_index = 0;
-  for (const auto& texture : model->textures) {
+  for (const auto& model_texture : model->textures) {
+    const auto& texture = model_texture.texture;
     struct {
       uint32_t size;
       uint32_t flags;
@@ -265,7 +266,7 @@ void SaveModel(const X_AVATAR_COMPONENT_INFO& component_info,
   }
 }
 
-bool LoadFile(std::filesystem::path path, std::vector<uint8_t>& buffer) {
+static bool LoadFile(std::filesystem::path path, std::vector<uint8_t>& buffer) {
   bool was_loaded = false;
   auto handle = xe::filesystem::OpenFile(path, "rb");
   if (handle != nullptr) {
@@ -289,7 +290,7 @@ struct ShaderParameterOverride {
   float w;
 };
 
-bool VertexToGuest(X_AVATAR_VERTEX* guest, const Vertex& host) {
+static bool VertexToGuest(X_AVATAR_VERTEX* guest, const Vertex& host) {
   guest->position.x = host.position.x;
   guest->position.y = host.position.y;
   guest->position.z = host.position.z;
@@ -306,8 +307,9 @@ bool VertexToGuest(X_AVATAR_VERTEX* guest, const Vertex& host) {
   return true;
 }
 
-void OverrideShaderParameter(X_AVATAR_SHADER_PARAM* parameters,
-                             ShaderParameterOverride parameter_override) {
+static void OverrideShaderParameter(
+    X_AVATAR_SHADER_PARAM* parameters,
+    const ShaderParameterOverride& parameter_override) {
   for (size_t i = 0, o = 19; i < 20; ++i, --o) {
     auto& parameter = parameters[o];
     if (parameter.usage != parameter_override.usage) {
@@ -323,7 +325,7 @@ void OverrideShaderParameter(X_AVATAR_SHADER_PARAM* parameters,
   }
 }
 
-bool TriangleBatchToGuest(
+static bool TriangleBatchToGuest(
     X_AVATAR_TRIANGLE_BATCH& guest, const TriangleBatch& host,
     MemoryBlock* cpu_memory, uint8_t* cpu_buffer, MemoryBlock* gpu_memory,
     uint8_t* gpu_buffer, uint32_t gpu_buffer_base_ptr,
@@ -378,46 +380,53 @@ bool TriangleBatchToGuest(
   return true;
 }
 
-bool TextureToGuest(X_AVATAR_TEXTURE& guest, const Texture& host,
-                    MemoryBlock* cpu_memory, uint8_t* cpu_buffer,
-                    MemoryBlock* gpu_memory, uint8_t* gpu_buffer,
-                    uint32_t gpu_buffer_base_ptr) {
-  auto format = host.format;
-  format &= ~0x00000100;
+static bool TextureToGuest(X_AVATAR_TEXTURE& guest, const ModelTexture& host,
+                           MemoryBlock* cpu_memory, uint8_t* cpu_buffer,
+                           MemoryBlock* gpu_memory, uint8_t* gpu_buffer,
+                           uint32_t gpu_buffer_base_ptr) {
+  auto format = host.texture.format;
+  format &= ~0x00000100u;
   guest.format = format;
-  guest.width = host.width;
-  guest.height = host.height;
-  guest.total_base_size = host.total_data_size;
+  guest.width = host.texture.width;
+  guest.height = host.texture.height;
+  guest.total_base_size = host.texture.total_data_size;
   guest.total_mip_size = 0;
-  guest.base_size = host.data_size;
+  guest.base_size = host.texture.data_size;
   guest.mip_size = 0;
   guest.mip_levels = 1;
-  guest.layer_count = host.layer_count;
+  guest.layer_count = host.texture.layer_count;
   gpu_memory->SetPointer(&guest.base_data_ptr,
                          gpu_buffer_base_ptr + host.gpu_offset);
   guest.mip_data_ptr = 0;
 
   auto data_buffer = &gpu_buffer[host.gpu_offset];
-  std::memset(data_buffer, 0, host.gpu_size);
-  if (!host.is_empty) {
-    size_t input_stride = host.data_stride;
-    size_t output_stride = align(input_stride, size_t(256));
+  if (!host.texture.is_empty) {
+    uint32_t output_align = (host.texture.format == 0x1A200152u ||
+                             host.texture.format == 0x1A200052u)
+                                ? 256u
+                                : 512u;
+    size_t input_stride = host.texture.data_stride;
+    size_t output_stride = align(host.texture.data_stride, output_align);
     size_t input_offset = 0;
     size_t output_offset = 0;
-    assert_true(host.data_rows * output_stride <= host.gpu_size);
-    for (size_t y = 0; y < host.data_rows; ++y) {
-      std::memcpy(&data_buffer[output_offset],
-                  &host.data_bytes.data()[input_offset], input_stride);
-      input_offset += input_stride;
-      output_offset += output_stride;
+    assert_true(host.texture.data_rows * output_stride <= host.gpu_size);
+    for (size_t layer = 0; layer < host.texture.layer_count; ++layer) {
+      for (size_t y = 0; y < host.texture.data_rows; ++y) {
+        std::memcpy(&data_buffer[output_offset],
+                    &host.texture.data_bytes.data()[input_offset],
+                    input_stride);
+        input_offset += input_stride;
+        output_offset += output_stride;
+      }
     }
   }
   return true;
 }
 
-bool ModelToGuest(
+static bool ModelToGuest(
     std::shared_ptr<Model> host_model, X_AVATAR_MODEL* guest_model,
-    MemoryBlock* cpu_memory, MemoryBlock* gpu_memory,
+    MemoryBlock* cpu_memory, MemoryBlock* gpu_memory, uint32_t category_mask,
+    std::shared_ptr<Texture> replacement_textures[6],
     const std::vector<ShaderParameterOverride>& shader_parameter_overrides) {
   if (host_model == nullptr) {
     return false;
@@ -462,12 +471,63 @@ bool ModelToGuest(
     }
   }
 
-  auto guest_textures = reinterpret_cast<X_AVATAR_TEXTURE*>(
-      &cpu_buffer[host_model->texture_array_offset]);
-  for (size_t i = 0; i < guest_model->texture_count; ++i) {
-    if (!TextureToGuest(guest_textures[i], host_model->textures[i], cpu_memory,
-                        cpu_buffer, gpu_memory, gpu_buffer, gpu_buffer_ptr)) {
-      return false;
+  // override head textures with those from the metadata
+  if (category_mask == ComponentCategory::kHead) {
+    int usage_indices[20];
+    for (size_t i = 0; i < 20; ++i) {
+      usage_indices[i] = -1;
+    }
+    const int usage_to_replacement_texture_indices[] = {
+        -1, -1, -1, -1, -1, 5, 3, 2, 2, 1, 1, 4, 0,
+    };
+    std::vector<int> replacement_texture_indices(guest_model->texture_count);
+    for (size_t i = 0; i < guest_model->triangle_batch_count; ++i) {
+      const auto& triangle_batch = host_model->triangle_batches[i];
+      for (const auto& shader_parameter : triangle_batch.shader_parameters) {
+        if (shader_parameter.usage >= 20 ||
+            shader_parameter.type != ShaderParameterType::kTexture) {
+          continue;
+        }
+        const auto& usage = shader_parameter.usage;
+        const auto& texture_index = shader_parameter.texture.index;
+        assert_true(usage_indices[usage] == -1 ||
+                    usage_indices[usage] == texture_index);
+        usage_indices[usage] = texture_index;
+        replacement_texture_indices[texture_index] =
+            usage < countof(usage_to_replacement_texture_indices)
+                ? usage_to_replacement_texture_indices[usage]
+                : -1;
+      }
+    }
+
+    auto guest_textures = reinterpret_cast<X_AVATAR_TEXTURE*>(
+        &cpu_buffer[host_model->texture_array_offset]);
+    for (size_t i = 0; i < guest_model->texture_count; ++i) {
+      ModelTexture model_texture;
+      auto replacement_texture_index = replacement_texture_indices[i];
+      if (replacement_texture_index >= 0 &&
+          replacement_textures[replacement_texture_index] != nullptr) {
+        model_texture.gpu_offset = host_model->textures[i].gpu_offset;
+        model_texture.gpu_size = host_model->textures[i].gpu_size;
+        model_texture.texture =
+            *replacement_textures[replacement_texture_index];
+      } else {
+        model_texture = host_model->textures[i];
+      }
+      if (!TextureToGuest(guest_textures[i], model_texture, cpu_memory,
+                          cpu_buffer, gpu_memory, gpu_buffer, gpu_buffer_ptr)) {
+        return false;
+      }
+    }
+  } else {
+    auto guest_textures = reinterpret_cast<X_AVATAR_TEXTURE*>(
+        &cpu_buffer[host_model->texture_array_offset]);
+    for (size_t i = 0; i < guest_model->texture_count; ++i) {
+      if (!TextureToGuest(guest_textures[i], host_model->textures[i],
+                          cpu_memory, cpu_buffer, gpu_memory, gpu_buffer,
+                          gpu_buffer_ptr)) {
+        return false;
+      }
     }
   }
 
@@ -591,6 +651,104 @@ bool SkeletonToGuest(X_AVATAR_SKELETON* guest, std::shared_ptr<Skeleton> host,
   return true;
 }
 
+std::shared_ptr<Model> LoadModelAsset(AssetPack* asset_pack,
+                                      const X_AVATAR_COMPONENT_INFO& info,
+                                      ModelLoadOptions model_load_options) {
+  const uint8_t* strb_buffer;
+  size_t strb_size;
+  std::vector<uint8_t> strb_bytes;
+  if (!asset_pack->GetAssetData(info.asset_id, strb_buffer, strb_size)) {
+    // TODO(gibbed): load from user data path
+    std::filesystem::path bin_path =
+        fmt::format("avatar_blobs\\{}.bin", info.asset_id.to_string());
+    if (!LoadFile(bin_path, strb_bytes)) {
+      return nullptr;
+    }
+    strb_buffer = strb_bytes.data();
+    strb_size = strb_bytes.size();
+  }
+  return Model::Load(strb_buffer, strb_size, model_load_options);
+}
+
+std::shared_ptr<Texture> LoadTextureAsset(
+    AssetPack* asset_pack, const X_AVATAR_METADATA_TEXTURE& info) {
+  const uint8_t* strb_buffer;
+  size_t strb_size;
+  std::vector<uint8_t> strb_bytes;
+  if (!asset_pack->GetAssetData(info.asset_id, strb_buffer, strb_size)) {
+    // TODO(gibbed): load from user data path
+    std::filesystem::path bin_path =
+        fmt::format("avatar_blobs\\{}.bin", info.asset_id.to_string());
+    if (!LoadFile(bin_path, strb_bytes)) {
+      return nullptr;
+    }
+    strb_buffer = strb_bytes.data();
+    strb_size = strb_bytes.size();
+  }
+  return Texture::Load(strb_buffer, strb_size);
+}
+
+static void GetShaderOverrides(
+    const X_AVATAR_METADATA& metadata, uint32_t category_mask,
+    std::vector<ShaderParameterOverride>& shader_parameter_overrides) {
+  // skin color
+  if (category_mask & ComponentCategory::kBody) {
+    auto color = metadata.colors[0];
+    ShaderParameterOverride shader_parameter_override;
+    shader_parameter_override.usage = 22;
+    shader_parameter_override.x = ((color >> 16) & 0xFF) / 255.f;
+    shader_parameter_override.y = ((color >> 8) & 0xFF) / 255.f;
+    shader_parameter_override.z = ((color >> 0) & 0xFF) / 255.f;
+    shader_parameter_override.w = ((color >> 24) & 0xFF) / 255.f;
+    shader_parameter_overrides.push_back(shader_parameter_override);
+  }
+  // hair color
+  else if (category_mask & ComponentCategory::kHair) {
+    auto color = metadata.colors[1];
+    ShaderParameterOverride shader_parameter_override;
+    shader_parameter_override.usage = 22;
+    shader_parameter_override.x = ((color >> 16) & 0xFF) / 255.f;
+    shader_parameter_override.y = ((color >> 8) & 0xFF) / 255.f;
+    shader_parameter_override.z = ((color >> 0) & 0xFF) / 255.f;
+    shader_parameter_override.w = ((color >> 24) & 0xFF) / 255.f;
+    shader_parameter_overrides.push_back(shader_parameter_override);
+  } else {
+    ShaderParameterOverride shader_parameter_override;
+    shader_parameter_override.usage = 22;
+    shader_parameter_override.x = 1.f;
+    shader_parameter_override.y = 1.f;
+    shader_parameter_override.z = 1.f;
+    shader_parameter_override.w = 1.f;
+    shader_parameter_overrides.push_back(shader_parameter_override);
+  }
+
+  if (category_mask & ComponentCategory::kHead) {
+    for (uint32_t i = 0, usage = 13; i < 9; ++i, ++usage) {
+      auto color = metadata.colors[i];
+      ShaderParameterOverride shader_parameter_override;
+      shader_parameter_override.usage = usage;
+      shader_parameter_override.x = ((color >> 16) & 0xFF) / 255.f;
+      shader_parameter_override.y = ((color >> 8) & 0xFF) / 255.f;
+      shader_parameter_override.z = ((color >> 0) & 0xFF) / 255.f;
+      shader_parameter_override.w = ((color >> 24) & 0xFF) / 255.f;
+      shader_parameter_overrides.push_back(shader_parameter_override);
+    }
+  }
+
+  // rim light color
+  {
+    auto color = metadata.colors[0];
+    ShaderParameterOverride shader_parameter_override;
+    shader_parameter_override.usage = 27;
+    // TODO(gibbed): calculate rim light color properly
+    shader_parameter_override.x = 0.54901963f;
+    shader_parameter_override.y = 0.5019608f;
+    shader_parameter_override.z = 0.40392157f;
+    shader_parameter_override.w = 1.6f;
+    shader_parameter_overrides.push_back(shader_parameter_override);
+  }
+}
+
 bool LoadAssetsToGuest(const X_AVATAR_METADATA& metadata,
                        uint32_t category_mask, uint32_t flags,
                        AssetPack* asset_pack, MemoryBlock* cpu_memory,
@@ -616,38 +774,7 @@ bool LoadAssetsToGuest(const X_AVATAR_METADATA& metadata,
     return false;
   }
 
-  std::vector<ShaderParameterOverride> shader_parameter_overrides;
-
-  for (uint32_t i = 0, usage = 13; i < 9; ++i, ++usage) {
-    auto color = metadata.colors[i];
-    ShaderParameterOverride shader_parameter_override;
-    shader_parameter_override.usage = usage;
-    shader_parameter_override.x = ((color >> 24) & 0xFF) / 255.f;
-    shader_parameter_override.y = ((color >> 16) & 0xFF) / 255.f;
-    shader_parameter_override.z = ((color >> 8) & 0xFF) / 255.f;
-    shader_parameter_override.w = ((color >> 0) & 0xFF) / 255.f;
-    shader_parameter_overrides.push_back(shader_parameter_override);
-  }
-  {
-    auto color = metadata.colors[0];
-    ShaderParameterOverride shader_parameter_override;
-    shader_parameter_override.usage = 22;
-    shader_parameter_override.x = ((color >> 24) & 0xFF) / 255.f;
-    shader_parameter_override.y = ((color >> 16) & 0xFF) / 255.f;
-    shader_parameter_override.z = ((color >> 8) & 0xFF) / 255.f;
-    shader_parameter_override.w = ((color >> 0) & 0xFF) / 255.f;
-    shader_parameter_overrides.push_back(shader_parameter_override);
-  }
-  /*{
-    auto color = metadata.colors[0];
-    ShaderParameterOverride shader_parameter_override;
-    shader_parameter_override.usage = 27;
-    shader_parameter_override.x = 1.f;
-    shader_parameter_override.y = 1.f;
-    shader_parameter_override.z = 1.f;
-    shader_parameter_override.w = 1.f;
-    shader_parameter_overrides.push_back(shader_parameter_override);
-  }*/
+  // TODO(gibbed): apply blend shapes to skeleton
 
   std::vector<X_AVATAR_COMPONENT_INFO> source_component_infos;
   if (metadata.body_component.matches(category_mask)) {
@@ -661,45 +788,50 @@ bool LoadAssetsToGuest(const X_AVATAR_METADATA& metadata,
       source_component_infos.push_back(component);
     }
   }
-  for (const auto& component : metadata.fallback_components) {
-    if (component.matches(category_mask)) {
-      // source_component_infos.push_back(component);
-    }
-  }
 
   size_t component_failures = 0;
   std::vector<std::pair<X_AVATAR_COMPONENT_INFO, std::shared_ptr<Model>>>
       source_components;
-  for (const auto& source_component_info : source_component_infos) {
-    const uint8_t* strb_buffer;
-    size_t strb_size;
-    std::vector<uint8_t> strb_bytes;
-    if (!asset_pack->GetAssetData(source_component_info.asset_id, strb_buffer,
-                                  strb_size)) {
-      // TODO(gibbed): load from user data path
-      std::filesystem::path bin_path = fmt::format(
-          "avatar_blobs\\{}.bin", source_component_info.asset_id.to_string());
-      if (!LoadFile(bin_path, strb_bytes)) {
-        XELOGE("Failed to find avatar asset {}!",
-               source_component_info.asset_id.to_string());
-        component_failures++;
-        continue;
-      }
-      strb_buffer = strb_bytes.data();
-      strb_size = strb_bytes.size();
+  for (const auto& source_info : source_component_infos) {
+    auto model = LoadModelAsset(asset_pack, source_info, model_load_options);
+    if (model != nullptr) {
+      // SaveModel(source_info, model, asset_pack);
+      source_components.push_back({source_info, model});
+      continue;
     }
-
-    auto model = Model::Load(strb_buffer, strb_size, model_load_options);
+    X_AVATAR_COMPONENT_INFO fallback_info;
+    for (const auto& candidate_info : metadata.fallback_components) {
+      if (candidate_info.categories == source_info.categories) {
+        // TODO(gibbed): if this fails... fall back even further?
+        model = LoadModelAsset(asset_pack, candidate_info, model_load_options);
+        fallback_info = candidate_info;
+        break;
+      }
+    }
     if (model == nullptr) {
       XELOGE("Failed to load avatar asset {}!",
-             source_component_info.asset_id.to_string());
+             source_info.asset_id.to_string());
       component_failures++;
       continue;
     }
-    /*
-    SaveModel(source_component_info, model, asset_pack);
-    */
-    source_components.push_back({source_component_info, model});
+    source_components.push_back({fallback_info, model});
+  }
+
+  size_t replacement_texture_failures = 0;
+  std::shared_ptr<Texture> replacement_textures[6];
+  for (size_t i = 0; i < 6; ++i) {
+    const auto& texture_info = metadata.textures[i];
+    if (texture_info.asset_id.is_zero()) {
+      continue;
+    }
+    auto texture = LoadTextureAsset(asset_pack, texture_info);
+    if (texture == nullptr) {
+      XELOGE("Failed to load avatar replacement texture {}!",
+             texture_info.asset_id.to_string());
+      replacement_texture_failures++;
+      continue;
+    }
+    replacement_textures[i] = texture;
   }
 
   auto assets = cpu_memory->Claim<X_AVATAR_ASSETS>();
@@ -732,8 +864,14 @@ bool LoadAssetsToGuest(const X_AVATAR_METADATA& metadata,
     auto component_model = component_models;
     for (const auto& source_component : source_components) {
       *component_info = source_component.first;
+
+      std::vector<ShaderParameterOverride> shader_parameter_overrides;
+      GetShaderOverrides(metadata, source_component.first.categories,
+                         shader_parameter_overrides);
+
       ModelToGuest(source_component.second, component_model, cpu_memory,
-                   gpu_memory, shader_parameter_overrides);
+                   gpu_memory, source_component.first.categories,
+                   replacement_textures, shader_parameter_overrides);
       component_info++;
       component_model++;
     }

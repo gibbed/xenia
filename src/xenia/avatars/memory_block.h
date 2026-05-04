@@ -48,10 +48,8 @@ class MemoryBlock {
   void ResolvePointers(uint32_t base_address) {
     for (const auto& offset_pointer : offset_pointers_) {
       if (offset_pointer) {
-        auto offset = *offset_pointer;
-        if (offset) {
-          *offset_pointer = base_address + offset;
-        }
+        be<uint32_t> offset = *offset_pointer;
+        *offset_pointer = base_address + offset;
       }
     }
   }

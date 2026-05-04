@@ -130,8 +130,6 @@ std::vector<uint16_t> TriangleBatch::ReadIndices(BitStream& stream,
 
 Texture Texture::Read(BitStream& stream) {
   Texture instance;
-  instance.gpu_offset = stream.Read<uint32_t>();
-  instance.gpu_size = stream.Read<uint32_t>();
   instance.format = stream.Read<uint32_t>();
   instance.width = stream.Read<uint32_t>();
   instance.height = stream.Read<uint32_t>();
@@ -151,6 +149,7 @@ Texture Texture::Read(BitStream& stream) {
   if (!instance.is_empty) {
     size_t data_size = instance.data_stride;
     data_size *= instance.data_rows;
+    data_size *= instance.layer_count;
     size_t data_bit_size = data_size * 8;
     assert_true(stream.offset_bits() + data_bit_size <= stream.size_bits());
     instance.data_bytes.resize(data_size);
@@ -159,6 +158,53 @@ Texture Texture::Read(BitStream& stream) {
     stream.Advance(data_bit_size);
   }
 
+  return instance;
+}
+
+std::shared_ptr<Texture> Texture::Read(const uint8_t* data_buffer,
+                                       size_t data_size) {
+  BitStream stream(data_buffer, data_size * 8);
+
+  auto instance = Read(stream);
+
+  assert_true(stream.offset_bits() == stream.size_bits());
+
+  return std::make_shared<Texture>(instance);
+}
+
+std::shared_ptr<Texture> Texture::Load(const uint8_t* strb_buffer,
+                                       size_t strb_size) {
+  const uint8_t* compressed_buffer;
+  size_t compressed_size;
+  if (!strb::GetSTRBBlock(strb_buffer, strb_size, strb::STRBBlockId::kTexture,
+                          compressed_buffer, compressed_size)) {
+    return nullptr;
+  }
+
+  size_t data_size;
+  if (!compression::GetUncompressedSize(compressed_buffer, compressed_size,
+                                        data_size)) {
+    assert_always();
+    XELOGE("Failed to get uncompressed size for avatar texture!");
+    return nullptr;
+  }
+
+  std::vector<uint8_t> data_bytes(data_size);
+  if (!compression::Decompress(compressed_buffer, compressed_size,
+                               data_bytes.data(), data_size)) {
+    assert_always();
+    XELOGE("Failed to decompress avatar texture!");
+    return nullptr;
+  }
+
+  return Read(data_bytes.data(), data_bytes.size());
+}
+
+ModelTexture ModelTexture::Read(BitStream& stream) {
+  ModelTexture instance;
+  instance.gpu_offset = stream.Read<uint32_t>();
+  instance.gpu_size = stream.Read<uint32_t>();
+  instance.texture = Texture::Read(stream);
   return instance;
 }
 
@@ -190,7 +236,7 @@ std::shared_ptr<Model> Model::Read(const uint8_t* data_buffer, size_t data_size,
   }
 
   for (uint32_t i = 0; i < texture_count; ++i) {
-    instance->textures.push_back(Texture::Read(stream));
+    instance->textures.push_back(ModelTexture::Read(stream));
     stream.AlignToNextByte();
   }
 

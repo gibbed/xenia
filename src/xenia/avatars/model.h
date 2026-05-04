@@ -98,8 +98,6 @@ struct TriangleBatch {
 
 struct Texture {
  public:
-  uint32_t gpu_offset;
-  uint32_t gpu_size;
   uint32_t format;
   uint32_t width;
   uint32_t height;
@@ -114,6 +112,24 @@ struct Texture {
 
  public:
   static Texture Read(BitStream& stream);
+
+ public:
+  static std::shared_ptr<Texture> Load(const uint8_t* strb_buffer,
+                                       size_t strb_size);
+
+ private:
+  static std::shared_ptr<Texture> Read(const uint8_t* data_buffer,
+                                       size_t data_size);
+};
+
+struct ModelTexture {
+ public:
+  uint32_t gpu_offset;
+  uint32_t gpu_size;
+  Texture texture;
+
+ public:
+  static ModelTexture Read(BitStream& stream);
 };
 
 class Model {
@@ -130,7 +146,7 @@ class Model {
   uint32_t texture_scratch_size;
 
   std::vector<TriangleBatch> triangle_batches;
-  std::vector<Texture> textures;
+  std::vector<ModelTexture> textures;
 
  public:
   static std::shared_ptr<Model> Load(const uint8_t* strb_buffer,
