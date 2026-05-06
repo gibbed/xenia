@@ -95,14 +95,14 @@ void Skeleton::Initialize() {
     auto position = matrix2.r[3];
     auto rotation = DirectX::XMQuaternionRotationMatrix(matrix2);
 
-    joint.pose.position.x = position.m128_f32[0];
-    joint.pose.position.y = position.m128_f32[1];
-    joint.pose.position.z = position.m128_f32[2];
-    // joint.pose.position.w = position.m128_f32[3];
-    joint.pose.rotation.x = rotation.m128_f32[0];
-    joint.pose.rotation.y = rotation.m128_f32[1];
-    joint.pose.rotation.z = rotation.m128_f32[2];
-    joint.pose.rotation.w = rotation.m128_f32[3];
+    joint.pose.position.x = DirectX::XMVectorGetX(position);
+    joint.pose.position.y = DirectX::XMVectorGetY(position);
+    joint.pose.position.z = DirectX::XMVectorGetZ(position);
+    // joint.pose.position.w = DirectX::XMVectorGetW(position);
+    joint.pose.rotation.x = DirectX::XMVectorGetX(rotation);
+    joint.pose.rotation.y = DirectX::XMVectorGetY(rotation);
+    joint.pose.rotation.z = DirectX::XMVectorGetZ(rotation);
+    joint.pose.rotation.w = DirectX::XMVectorGetW(rotation);
   }
 
   {
