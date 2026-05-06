@@ -40,7 +40,7 @@ void SaveModel(const X_AVATAR_COMPONENT_INFO& component_info,
                                 batch_index++);
     }
     FILE* output = fopen(output_name.c_str(), "wb");
-    if (output != nullptr) {
+    if (output == nullptr) {
       continue;
     }
 
