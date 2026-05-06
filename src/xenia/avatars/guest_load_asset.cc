@@ -673,6 +673,13 @@ bool LoadAssetsToGuest(const X_AVATAR_METADATA& metadata,
   }
 
   if (prop != nullptr) {
+    const auto& skeleton_scale = skeleton->joints[0].pose.scale;
+    auto prop_pose = prop->skeleton->joints[0].pose;
+    prop_pose.scale = skeleton_scale;
+    prop_pose.position.x *= skeleton_scale.x;
+    prop_pose.position.y *= skeleton_scale.y;
+    prop_pose.position.z *= skeleton_scale.z;
+
     uint32_t guest_prop_ptr;
     auto guest_prop = cpu_memory->Claim<X_AVATAR_PROP>(&guest_prop_ptr);
 
